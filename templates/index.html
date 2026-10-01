@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Memory + RAG Chatbot</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #eef1f7;
+            color: #1f2937;
+        }
+
+        .container {
+            width: 95%;
+            max-width: 1200px;
+            margin: 30px auto;
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+        }
+
+        h1 {
+            margin-top: 0;
+            color: #1d4ed8;
+        }
+
+        h2 {
+            margin-top: 0;
+        }
+
+        .upload-area {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        input[type="file"] {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+
+        button {
+            border: none;
+            padding: 13px 22px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .upload-btn {
+            background: #16a34a;
+            color: white;
+        }
+
+        .send-btn {
+            background: #2563eb;
+            color: white;
+        }
+
+        .clear-btn {
+            background: #dc2626;
+            color: white;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        #uploadStatus {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .success {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        #chatBox {
+            height: 550px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 15px;
+            padding: 20px;
+            background: #f8fafc;
+        }
+
+        .message {
+            padding: 14px 18px;
+            margin: 12px 0;
+            border-radius: 15px;
+            max-width: 80%;
+            white-space: pre-wrap;
+            line-height: 1.5;
+        }
+
+        .user {
+            background: #dbeafe;
+            color: #1e3a8a;
+            margin-left: auto;
+        }
+
+        .bot {
+            background: #e5e7eb;
+            color: #111827;
+            margin-right: auto;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        #questionInput {
+            flex: 1;
+            padding: 15px;
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            font-size: 16px;
+            outline: none;
+        }
+
+        #questionInput:focus {
+            border-color: #2563eb;
+        }
+
+        .bottom-info {
+            margin-top: 15px;
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        @media (max-width: 700px) {
+
+            .container {
+                width: 98%;
+            }
+
+            .input-area {
+                flex-direction: column;
+            }
+
+            .message {
+                max-width: 95%;
+            }
+
+            #chatBox {
+                height: 450px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <!-- ========================= -->
+    <!-- HEADER -->
+    <!-- ========================= -->
+
+    <div class="card">
+
+        <h1>🤖 Memory + RAG Chatbot</h1>
+
+        <p>
+            Upload a PDF and ask questions about its content.
+        </p>
+
+        <p>
+            The chatbot can also remember the conversation.
+        </p>
+
+    </div>
+
+
+    <!-- ========================= -->
+    <!-- PDF UPLOAD -->
+    <!-- ========================= -->
+
+    <div class="card">
+
+        <h2>📄 Upload PDF</h2>
+
+        <div class="upload-area">
+
+            <input
+                type="file"
+                id="pdfFile"
+                accept=".pdf"
+            >
+
+            <button
+                class="upload-btn"
+                onclick="uploadPDF()"
+            >
+                Upload PDF
+            </button>
+
+        </div>
+
+        <div id="uploadStatus"></div>
+
+    </div>
+
+
+    <!-- ========================= -->
+    <!-- CHAT -->
+    <!-- ========================= -->
+
+    <div class="card">
+
+        <h2>💬 Chat</h2>
+
+        <div id="chatBox">
+
+            <div class="message bot">
+                Hello! 👋
+
+                Upload a PDF and ask me questions about its content.
+
+                I can also remember our previous conversation.
+            </div>
+
+        </div>
+
+
+        <!-- QUESTION INPUT -->
+
+        <div class="input-area">
+
+            <input
+                type="text"
+                id="questionInput"
+                placeholder="Ask a question..."
+                autocomplete="off"
+            >
+
+            <button
+                class="send-btn"
+                id="sendButton"
+                onclick="sendQuestion()"
+            >
+                Send
+            </button>
+
+            <button
+                class="clear-btn"
+                onclick="clearMemory()"
+            >
+                Clear Memory
+            </button>
+
+        </div>
+
+        <div class="bottom-info">
+            💡 Memory remembers your previous questions and answers during the conversation.
+        </div>
+
+    </div>
+
+</div>
+
+
+<script>
+
+    // =====================================================
+    // SESSION ID
+    // =====================================================
+
+    let sessionId = localStorage.getItem("rag_session_id");
+
+    if (!sessionId) {
+
+        sessionId = crypto.randomUUID();
+
+        localStorage.setItem(
+            "rag_session_id",
+            sessionId
+        );
+    }
+
+
+    // =====================================================
+    // ADD MESSAGE TO CHAT
+    // =====================================================
+
+    function addMessage(
+        message,
+        type
+    ) {
+
+        const chatBox =
+            document.getElementById("chatBox");
+
+        const messageDiv =
+            document.createElement("div");
+
+        messageDiv.className =
+            "message " + type;
+
+        messageDiv.textContent =
+            message;
+
+        chatBox.appendChild(
+            messageDiv
+        );
+
+        chatBox.scrollTop =
+            chatBox.scrollHeight;
+    }
+
+
+    // =====================================================
+    // PDF UPLOAD
+    // =====================================================
+
+    async function uploadPDF() {
+
+        const fileInput =
+            document.getElementById("pdfFile");
+
+        const status =
+            document.getElementById("uploadStatus");
+
+        if (
+            !fileInput.files ||
+            fileInput.files.length === 0
+        ) {
+
+            status.style.display = "block";
+
+            status.className = "error";
+
+            status.textContent =
+                "❌ Please select a PDF file.";
+
+            return;
+        }
+
+        const file =
+            fileInput.files[0];
+
+        if (
+            !file.name
+                .toLowerCase()
+                .endsWith(".pdf")
+        ) {
+
+            status.style.display = "block";
+
+            status.className = "error";
+
+            status.textContent =
+                "❌ Please select a PDF file.";
+
+            return;
+        }
+
+
+        const formData =
+            new FormData();
+
+        formData.append(
+            "file",
+            file
+        );
+
+
+        status.style.display = "block";
+
+        status.className = "success";
+
+        status.textContent =
+            "⏳ Uploading PDF...";
+
+
+        try {
+
+            const response =
+                await fetch(
+                    "/upload",
+                    {
+                        method: "POST",
+                        body: formData
+                    }
+                );
+
+
+            const data =
+                await response.json();
+
+
+            if (data.success) {
+
+                status.className =
+                    "success";
+
+                status.textContent =
+                    `✅ PDF uploaded successfully. Chunks: ${data.chunks}`;
+
+            } else {
+
+                status.className =
+                    "error";
+
+                status.textContent =
+                    `❌ ${data.message}`;
+            }
+
+
+        } catch (error) {
+
+            console.error(error);
+
+            status.className =
+                "error";
+
+            status.textContent =
+                "❌ Server connection error.";
+
+        }
+
+    }
+
+
+    // =====================================================
+    // SEND QUESTION
+    // =====================================================
+
+    async function sendQuestion() {
+
+        const input =
+            document.getElementById(
+                "questionInput"
+            );
+
+        // IMPORTANT:
+        // Get the actual text from input
+
+        const question =
+            input.value.trim();
+
+
+        // Check empty question
+
+        if (!question) {
+
+            addMessage(
+                "❌ Please enter a question.",
+                "bot"
+            );
+
+            input.focus();
+
+            return;
+        }
+
+
+        // Show user question
+
+        addMessage(
+            question,
+            "user"
+        );
+
+
+        // Clear input
+
+        input.value = "";
+
+
+        // Disable button
+
+        const sendButton =
+            document.getElementById(
+                "sendButton"
+            );
+
+        sendButton.disabled = true;
+
+        sendButton.textContent =
+            "Thinking...";
+
+
+        try {
+
+            const response =
+                await fetch(
+                    "/chat",
+                    {
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type":
+                                "application/json"
+                        },
+
+                        body: JSON.stringify({
+
+                            message: question,
+
+                            session_id:
+                                sessionId
+
+                        })
+                    }
+                );
+
+
+            const data =
+                await response.json();
+
+
+            if (data.success) {
+
+                addMessage(
+                    data.answer,
+                    "bot"
+                );
+
+            } else {
+
+                addMessage(
+                    "❌ " + data.message,
+                    "bot"
+                );
+            }
+
+
+        } catch (error) {
+
+            console.error(error);
+
+            addMessage(
+                "❌ Could not connect to the server.",
+                "bot"
+            );
+
+        }
+
+
+        // Enable button
+
+        sendButton.disabled = false;
+
+        sendButton.textContent =
+            "Send";
+
+
+        input.focus();
+
+    }
+
+
+    // =====================================================
+    // ENTER KEY
+    // =====================================================
+
+    document
+        .getElementById("questionInput")
+        .addEventListener(
+            "keydown",
+            function(event) {
+
+                if (
+                    event.key === "Enter"
+                ) {
+
+                    event.preventDefault();
+
+                    sendQuestion();
+
+                }
+
+            }
+        );
+
+
+    // =====================================================
+    // CLEAR MEMORY
+    // =====================================================
+
+    async function clearMemory() {
+
+        try {
+
+            const response =
+                await fetch(
+                    "/clear-memory",
+                    {
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type":
+                                "application/json"
+                        },
+
+                        body: JSON.stringify({
+
+                            session_id:
+                                sessionId
+
+                        })
+                    }
+                );
+
+
+            const data =
+                await response.json();
+
+
+            if (data.success) {
+
+                const chatBox =
+                    document.getElementById(
+                        "chatBox"
+                    );
+
+                chatBox.innerHTML = "";
+
+                addMessage(
+                    "🧹 Memory cleared. You can start a new conversation.",
+                    "bot"
+                );
+
+            } else {
+
+                addMessage(
+                    "❌ " + data.message,
+                    "bot"
+                );
+            }
+
+
+        } catch (error) {
+
+            console.error(error);
+
+            addMessage(
+                "❌ Could not clear memory.",
+                "bot"
+            );
+
+        }
+
+    }
+
+</script>
+
+</body>
+</html>
